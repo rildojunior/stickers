@@ -23,6 +23,7 @@ import { useFeedback } from '../ui/feedback'
 import { Icon, type IconName } from '../ui/Icon'
 import { spring } from '../ui/motion'
 import { Sheet } from '../ui/Sheet'
+import { VideoTrimmer } from './VideoTrimmer'
 
 const S = LIMITS.size
 const COLORS = ['#ffffff', '#000000', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#007aff', '#5856d6', '#af52de', '#ff2d55']
@@ -90,7 +91,8 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
   const docRef = useRef(doc)
   docRef.current = doc
   const [history, setHistory] = useState<StickerDoc[]>([])
-  const [tool, setTool] = useState<Tool>('move')
+  // Vídeo começa no corte do trecho, como no Sticker.ly (cortar → ajustar).
+  const [tool, setTool] = useState<Tool>(kind === 'animated' ? 'trim' : 'move')
   const [selected, setSelected] = useState<Selection>('source')
   const [editingText, setEditingText] = useState<TextLayer | null>(null)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
@@ -99,6 +101,7 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
   const [brush, setBrush] = useState({ color: '#ffffff', width: 14 })
 
   const [trim, setTrim] = useState({ start: 0, duration: 3, fps: 12 })
+  const trimLabel = `${trim.duration.toFixed(1).replace('.', ',')} s`
   const [playing, setPlaying] = useState(true)
 
   // ---------- Carregar a mídia ----------
@@ -443,20 +446,22 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
         await onSave(blob, 'static')
       } else if (video) {
         video.pause()
-        const frameCount = Math.max(1, Math.round(trim.duration * trim.fps))
         setBusy({ label: 'Criando figurinha animada…', progress: 0 })
-        const blob = await encodeAnimatedSticker(
+        const result = await encodeAnimatedSticker(
           {
-            frameCount,
-            draw: async (i, canvas) => {
-              await seek(video, trim.start + i / trim.fps)
+            duration: trim.duration,
+            draw: async (time, canvas) => {
+              await seek(video, trim.start + time)
               renderSticker(canvas.getContext('2d', { willReadFrequently: true })!, doc, video, srcW, srcH)
             },
           },
           trim.fps,
           (p) => setBusy({ label: 'Criando figurinha animada…', progress: p }),
         )
-        await onSave(blob, 'animated')
+        await onSave(result.blob, 'animated')
+        if (result.reduced) {
+          toast(`Ajustada para caber nos 500 KB do WhatsApp (${result.fps} qps). Trechos mais curtos ficam mais fluidos.`)
+        }
       }
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Algo deu errado ao salvar.')
@@ -697,42 +702,33 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
 
             {tool === 'trim' && video && (
               <>
-                <div className="slider-row">
-                  <span style={{ width: '4.5rem' }}>Início</span>
-                  <input
-                    type="range"
-                    min={0}
-                    max={Math.max(0, video.duration - 0.2)}
-                    step={0.05}
-                    value={trim.start}
-                    onChange={(e) => {
-                      const start = +e.target.value
-                      setTrim((t) => ({ ...t, start, duration: Math.min(t.duration, video.duration - start) }))
-                      video.currentTime = start
-                    }}
-                  />
-                  <span style={{ width: '2.75rem', textAlign: 'right' }}>{trim.start.toFixed(1)}s</span>
-                </div>
-                <div className="slider-row" style={{ marginTop: '0.25rem' }}>
-                  <span style={{ width: '4.5rem' }}>Duração</span>
-                  <input
-                    type="range"
-                    min={0.5}
-                    max={Math.max(0.5, Math.min(maxDuration, video.duration - trim.start))}
-                    step={0.1}
-                    value={trim.duration}
-                    onChange={(e) => setTrim((t) => ({ ...t, duration: +e.target.value }))}
-                  />
-                  <span style={{ width: '2.75rem', textAlign: 'right' }}>{trim.duration.toFixed(1)}s</span>
-                </div>
-                <div className="panel-row" style={{ marginTop: '0.375rem' }}>
+                <VideoTrimmer
+                  video={video}
+                  start={trim.start}
+                  end={trim.start + trim.duration}
+                  maxLength={maxDuration}
+                  onChange={({ start, end }, edge) => {
+                    setTrim((t) => ({ ...t, start, duration: end - start }))
+                    // Mostra o quadro da borda que está sendo arrastada.
+                    setPlaying(false)
+                    video.currentTime = edge === 'end' ? end : start
+                  }}
+                />
+                <div className="panel-row" style={{ marginTop: '0.5rem' }}>
                   <button className="icon-btn" style={{ color: '#fff' }} onClick={() => setPlaying((p) => !p)} aria-label={playing ? 'Pausar' : 'Reproduzir'}>
                     <Icon name={playing ? 'pause' : 'play'} />
                   </button>
+                  <span className="t-footnote" style={{ width: '3.25rem', fontVariantNumeric: 'tabular-nums' }}>
+                    {trimLabel}
+                  </span>
                   <div className="segmented" style={{ flex: 1 }}>
-                    {[10, 15, 20].map((fps) => (
-                      <button key={fps} data-selected={trim.fps === fps} onClick={() => setTrim((t) => ({ ...t, fps }))}>
-                        {fps} qps
+                    {[
+                      { fps: 8, label: 'Leve' },
+                      { fps: 12, label: 'Normal' },
+                      { fps: 15, label: 'Fluida' },
+                    ].map((o) => (
+                      <button key={o.fps} data-selected={trim.fps === o.fps} onClick={() => setTrim((t) => ({ ...t, fps: o.fps }))}>
+                        {o.label}
                       </button>
                     ))}
                   </div>

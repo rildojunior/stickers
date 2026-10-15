@@ -834,6 +834,90 @@ button.row:active {
   font-weight: 600;
 }
 
+/* Corte de vídeo: linha do tempo com alças */
+.trimmer {
+  touch-action: none;
+  padding: 0 1rem;
+}
+.trimmer-track {
+  position: relative;
+  height: 3.25rem;
+}
+.trimmer-thumbs {
+  position: absolute;
+  inset: 0.25rem 0;
+  display: flex;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: #1c1c1e;
+}
+.trimmer-thumb {
+  flex: 1;
+  background-size: cover;
+  background-position: center;
+}
+.trimmer-dim {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  background: rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.trimmer-window {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border: 3px solid #ffd60a;
+  border-left-width: 0;
+  border-right-width: 0;
+  border-radius: 0.5rem;
+  cursor: grab;
+}
+.trimmer-handle {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1rem;
+  background: #ffd60a;
+  cursor: ew-resize;
+}
+/* Área de toque maior que a alça visível */
+.trimmer-handle::after {
+  content: '';
+  position: absolute;
+  inset: 0 -0.75rem;
+}
+.trimmer-handle::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 1rem;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.55);
+  transform: translate(-50%, -50%);
+}
+.trimmer-handle[data-edge='start'] {
+  left: -1rem;
+  border-radius: 0.5rem 0 0 0.5rem;
+}
+.trimmer-handle[data-edge='end'] {
+  right: -1rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+.trimmer-playhead {
+  position: absolute;
+  top: 0.125rem;
+  bottom: 0.125rem;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: #fff;
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
 /* Edição de texto em tela cheia */
 .text-overlay {
   position: fixed;
