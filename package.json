@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ios:install": "npm run build && npx cap sync ios && sh scripts/ios-install.sh"
   },
   "dependencies": {
     "@capacitor/core": "^8.5.3",
