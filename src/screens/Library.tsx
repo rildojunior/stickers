@@ -1,5 +1,6 @@
 import { motion } from 'motion/react'
 import { useRef, useState } from 'react'
+import { isIOS } from '../lib/share'
 import { importPack } from '../lib/wastickers'
 import { LIMITS, type StickerKind } from '../lib/types'
 import { useStore } from '../store'
@@ -9,7 +10,6 @@ import { NavBar } from '../ui/NavBar'
 import { spring } from '../ui/motion'
 import { PackFormSheet } from './sheets'
 
-const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 const isStandalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as { standalone?: boolean }).standalone === true
 
 export function Library({ onOpenPack, onCreate }: { onOpenPack: (id: string) => void; onCreate: (kind: StickerKind, packId: string | null) => void }) {
@@ -17,7 +17,7 @@ export function Library({ onOpenPack, onCreate }: { onOpenPack: (id: string) => 
   const { toast, setBusy } = useFeedback()
   const [scrolled, setScrolled] = useState(false)
   const [newPack, setNewPack] = useState(false)
-  const [installHint, setInstallHint] = useState(() => isIOS && !isStandalone && localStorage.getItem('figurinhas.installHint') !== 'off')
+  const [installHint, setInstallHint] = useState(() => isIOS() && !isStandalone && localStorage.getItem('figurinhas.installHint') !== 'off')
   const importInput = useRef<HTMLInputElement>(null)
 
   const onImport = async (file: File | undefined) => {

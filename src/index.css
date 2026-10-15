@@ -915,6 +915,11 @@ button.row:active {
   display: grid;
   gap: 0.625rem;
 }
+.btn-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.625rem;
+}
 .hint {
   margin-top: 0.75rem;
   text-align: center;

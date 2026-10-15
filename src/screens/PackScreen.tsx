@@ -42,7 +42,7 @@ export function PackScreen({
   const full = count >= LIMITS.maxStickers
   const allLoaded = pack.stickerIds.every((id) => blobs[id])
 
-  // Envia todas de uma vez pela folha do sistema (o WhatsApp recebe várias imagens).
+  // Compartilha os arquivos de uma vez. No iPhone o WhatsApp recebe como fotos; serve para backup/Web.
   const sendAll = () => {
     if (!allLoaded || count === 0) return
     const files = pack.stickerIds.map((id, i) => stickerFile(blobs[id], `${pack.title}-${i + 1}`))
@@ -111,7 +111,7 @@ export function PackScreen({
 
         <div className="actions-row">
           <button className="action-tile press" onClick={sendAll} disabled={!count || !allLoaded}>
-            <Icon name="share" /> Enviar todas
+            <Icon name="share" /> Compartilhar
           </button>
           <button className="action-tile press" onClick={exportZip} disabled={!count}>
             <Icon name="download" /> Exportar

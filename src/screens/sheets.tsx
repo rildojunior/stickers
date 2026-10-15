@@ -1,42 +1,72 @@
 import { useEffect, useState } from 'react'
-import { canCopyImages, copySticker, download, shareFiles, stickerFile } from '../lib/share'
+import { canCopyImages, canCopyWebp, copySticker, download, isIOS, openWhatsApp, shareFiles, stickerFile } from '../lib/share'
 import { LIMITS, type Pack, type StickerKind } from '../lib/types'
 import { useBlobs, useStore } from '../store'
 import { useFeedback } from '../ui/feedback'
 import { Icon } from '../ui/Icon'
 import { Sheet } from '../ui/Sheet'
 
-/** Botões de envio. O compartilhamento roda direto no toque (o blob já está carregado). */
+/**
+ * Botões de envio. No iPhone, só colar na conversa faz chegar como figurinha, então o botão
+ * principal copia e abre o WhatsApp. O compartilhamento de arquivo fica como opção secundária.
+ */
 export function SendButtons({ stickerId, name }: { stickerId: string; name: string }) {
+  const { stickers } = useStore()
   const blobs = useBlobs([stickerId])
   const blob = blobs[stickerId]
   const { toast } = useFeedback()
+  const animated = stickers[stickerId]?.kind === 'animated'
+  const copyLosesAnimation = animated && !canCopyWebp()
 
-  const send = () => {
+  const copy = (thenOpen: boolean) => {
+    if (!blob) return
+    copySticker(blob)
+      .then(() => {
+        if (thenOpen) {
+          toast('Copiada! Abra uma conversa e cole.')
+          openWhatsApp()
+        } else {
+          toast('Copiada! Cole na conversa do WhatsApp.')
+        }
+      })
+      .catch(() => toast('Não deu para copiar neste navegador.'))
+  }
+  const shareFile = () => {
     if (!blob) return
     shareFiles([stickerFile(blob, name)])
       .then((r) => r === 'downloaded' && toast('Arquivo salvo. Envie pelo WhatsApp Web ou app.'))
       .catch(() => toast('Não foi possível compartilhar.'))
   }
-  const copy = () => {
-    if (!blob) return
-    copySticker(blob)
-      .then(() => toast('Copiada! Cole na conversa do WhatsApp.'))
-      .catch(() => toast('Não deu para copiar neste navegador.'))
+
+  if (!canCopyImages()) {
+    return (
+      <div className="stack">
+        <button className="btn press" data-variant="primary" onClick={shareFile} disabled={!blob}>
+          <Icon name="share" /> Enviar para o WhatsApp
+        </button>
+      </div>
+    )
   }
 
   return (
     <div className="stack">
-      <button className="btn press" data-variant="primary" onClick={send} disabled={!blob}>
-        <Icon name="share" /> Enviar para o WhatsApp
+      <button className="btn press" data-variant="primary" onClick={() => copy(true)} disabled={!blob}>
+        <Icon name="copy" /> Copiar e abrir o WhatsApp
       </button>
-      {canCopyImages() && (
-        <button className="btn press" onClick={copy} disabled={!blob}>
-          <Icon name="copy" /> Copiar figurinha
+      <div className="btn-pair">
+        <button className="btn press" onClick={() => copy(false)} disabled={!blob}>
+          Só copiar
         </button>
-      )}
+        <button className="btn press" onClick={shareFile} disabled={!blob}>
+          <Icon name="share" size={20} /> Arquivo
+        </button>
+      </div>
       <p className="t-footnote hint">
-        No iPhone: toque em <b>Copiar</b> e cole na conversa, ou use <b>Enviar</b> e escolha o WhatsApp.
+        {copyLosesAnimation
+          ? 'Neste navegador a figurinha copiada perde a animação. Use “Arquivo” e mande pelo WhatsApp Web, ou salve o pacote.'
+          : isIOS()
+            ? 'No WhatsApp, abra a conversa, toque no campo de mensagem e escolha Colar.'
+            : 'Cole na conversa do WhatsApp, ou use “Arquivo” no WhatsApp Web.'}
       </p>
     </div>
   )
