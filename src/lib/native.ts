@@ -8,8 +8,8 @@ import { muxAnimatedWebp } from './webp'
 interface WhatsAppStickersPlugin {
   getStatus(): Promise<{ whatsapp: boolean; business: boolean }>
   writePackFile(options: { identifier: string; name: string; data: string }): Promise<void>
-  addPack(options: NativePack & { target?: 'whatsapp' | 'business' }): Promise<{ status: 'added' | 'cancelled' }>
-  isPackAdded(options: { identifier: string }): Promise<{ added: boolean; whatsapp: boolean; business: boolean }>
+  addPack(options: NativePack & { target?: 'whatsapp' | 'business' }): Promise<{ status: AddPackStatus }>
+  isPackAdded(options: { identifier: string }): Promise<{ added: boolean; whatsapp: boolean; business: boolean; supported?: boolean }>
 }
 
 interface NativePack {
@@ -21,11 +21,16 @@ interface NativePack {
   stickers: Array<{ file: string; emojis: string[] }>
 }
 
+/** Android confirma a adição; no iPhone o WhatsApp só é aberto ('sent'), sem devolver resultado. */
+export type AddPackStatus = 'added' | 'cancelled' | 'sent'
+
 const WhatsAppStickers = registerPlugin<WhatsAppStickersPlugin>('WhatsAppStickers')
 
 /** Rodando dentro do app Android instalado (Capacitor), e não no navegador. */
 export const isNativeApp = () => Capacitor.isNativePlatform()
-export const canAddPacksToWhatsApp = () => Capacitor.getPlatform() === 'android'
+export const canAddPacksToWhatsApp = () => ['android', 'ios'].includes(Capacitor.getPlatform())
+/** Só o Android consegue perguntar ao WhatsApp se o pacote já foi adicionado. */
+export const canCheckPackAdded = () => Capacitor.getPlatform() === 'android'
 
 export const ANDROID_APK_URL = '/download/figurinhas.apk'
 
@@ -56,7 +61,7 @@ async function placeholder(animated: boolean): Promise<Blob> {
 }
 
 export interface AddPackResult {
-  status: 'added' | 'cancelled'
+  status: AddPackStatus
   padded: number
 }
 

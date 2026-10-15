@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { addPackToWhatsApp, canAddPacksToWhatsApp, isPackAdded } from '../lib/native'
+import { addPackToWhatsApp, canAddPacksToWhatsApp, canCheckPackAdded, isPackAdded } from '../lib/native'
 import { LIMITS } from '../lib/types'
 import { useStore } from '../store'
 import { useFeedback } from '../ui/feedback'
@@ -24,7 +24,7 @@ export function AddToWhatsAppButton({ packId, variant = 'primary' }: { packId: s
   const [syncedVersion, setSyncedVersion] = useState(() => localStorage.getItem(syncedKey))
 
   const refresh = useCallback(() => {
-    if (!canAddPacksToWhatsApp()) return
+    if (!canCheckPackAdded()) return
     isPackAdded(packId)
       .then((r) => setAdded(r.added))
       .catch(() => setAdded(null))
@@ -41,8 +41,18 @@ export function AddToWhatsAppButton({ packId, variant = 'primary' }: { packId: s
   if (!canAddPacksToWhatsApp() || !pack) return null
 
   const count = pack.stickerIds.length
-  const outdated = added === true && syncedVersion !== String(pack.updatedAt)
-  const label = added ? (outdated ? 'Atualizar no WhatsApp' : 'Já está no WhatsApp') : 'Adicionar ao WhatsApp'
+  // No iPhone não há como consultar: usamos a última versão enviada neste aparelho.
+  const sentBefore = !canCheckPackAdded() && syncedVersion != null
+  const outdated = (added === true || sentBefore) && syncedVersion !== String(pack.updatedAt)
+  const label = added
+    ? outdated
+      ? 'Atualizar no WhatsApp'
+      : 'Já está no WhatsApp'
+    : sentBefore
+      ? outdated
+        ? 'Atualizar no WhatsApp'
+        : 'Enviar de novo ao WhatsApp'
+      : 'Adicionar ao WhatsApp'
 
   const run = async () => {
     setBusy({ label: 'Preparando pacote…', progress: 0 })
@@ -50,7 +60,11 @@ export function AddToWhatsAppButton({ packId, variant = 'primary' }: { packId: s
       const items = await Promise.all(pack.stickerIds.map(async (id) => ({ sticker: stickers[id], blob: (await getBlob(id))! })))
       const result = await addPackToWhatsApp(pack, items, (p) => setBusy({ label: 'Preparando pacote…', progress: p }))
       setBusy(null)
-      if (result.status === 'added') {
+      if (result.status === 'sent') {
+        localStorage.setItem(syncedKey, String(pack.updatedAt))
+        setSyncedVersion(String(pack.updatedAt))
+        toast('Confirme “Salvar” no WhatsApp para adicionar o pacote.')
+      } else if (result.status === 'added') {
         localStorage.setItem(syncedKey, String(pack.updatedAt))
         setSyncedVersion(String(pack.updatedAt))
         setAdded(true)
