@@ -1,3 +1,6 @@
+import { Capacitor } from '@capacitor/core'
+import { Directory, Filesystem } from '@capacitor/filesystem'
+import { Share } from '@capacitor/share'
 import { webpToPng } from './encode'
 
 export type ShareResult = 'shared' | 'downloaded' | 'cancelled'
@@ -22,6 +25,7 @@ export function download(file: File) {
  * (sem `await` antes), senão o Safari bloqueia — por isso os blobs já chegam carregados.
  */
 export async function shareFiles(files: File[]): Promise<ShareResult> {
+  if (Capacitor.isNativePlatform()) return shareNative(files)
   if (navigator.canShare?.({ files })) {
     try {
       await navigator.share({ files })
@@ -33,6 +37,36 @@ export async function shareFiles(files: File[]): Promise<ShareResult> {
   }
   files.forEach(download)
   return 'downloaded'
+}
+
+export function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).split(',', 2)[1] ?? '')
+    reader.onerror = () => reject(reader.error ?? new Error('Falha ao ler arquivo'))
+    reader.readAsDataURL(blob)
+  })
+}
+
+/** No app instalado a WebView não tem Web Share: grava no cache e usa o compartilhamento nativo. */
+async function shareNative(files: File[]): Promise<ShareResult> {
+  const uris: string[] = []
+  for (const file of files) {
+    const written = await Filesystem.writeFile({
+      path: `share/${file.name}`,
+      data: await blobToBase64(file),
+      directory: Directory.Cache,
+      recursive: true,
+    })
+    uris.push(written.uri)
+  }
+  try {
+    await Share.share({ files: uris })
+    return 'shared'
+  } catch (err) {
+    if (err instanceof Error && /cancel/i.test(err.message)) return 'cancelled'
+    throw err
+  }
 }
 
 export function stickerFile(blob: Blob, name: string) {
