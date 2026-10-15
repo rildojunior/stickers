@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    uses: ./.github/workflows/android.yml
+    with:
+      version_name: ${{ github.ref_name }}
+    secrets: inherit
+
+  publish:
+    needs: android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: figurinhas-apk
+      - run: mv figurinhas.apk "figurinhas-${GITHUB_REF_NAME}.apk"
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: figurinhas-*.apk
+          generate_release_notes: true
