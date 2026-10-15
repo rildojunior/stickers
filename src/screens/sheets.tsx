@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
+import { canAddPacksToWhatsApp } from '../lib/native'
 import { canCopyImages, canCopyWebp, copySticker, download, isIOS, openWhatsApp, shareFiles, stickerFile } from '../lib/share'
 import { LIMITS, type Pack, type StickerKind } from '../lib/types'
 import { useBlobs, useStore } from '../store'
 import { useFeedback } from '../ui/feedback'
 import { Icon } from '../ui/Icon'
 import { Sheet } from '../ui/Sheet'
+import { AddToWhatsAppButton } from './AddToWhatsApp'
 
 /**
  * Botões de envio. No iPhone, só colar na conversa faz chegar como figurinha, então o botão
@@ -36,6 +38,20 @@ export function SendButtons({ stickerId, name }: { stickerId: string; name: stri
     shareFiles([stickerFile(blob, name)])
       .then((r) => r === 'downloaded' && toast('Arquivo salvo. Envie pelo WhatsApp Web ou app.'))
       .catch(() => toast('Não foi possível compartilhar.'))
+  }
+
+  // App Android: o pacote vai inteiro pela API oficial, sem o contorno automático do WhatsApp.
+  const packId = stickers[stickerId]?.packId
+  if (canAddPacksToWhatsApp() && packId) {
+    return (
+      <div className="stack">
+        <AddToWhatsAppButton packId={packId} />
+        <button className="btn press" onClick={shareFile} disabled={!blob}>
+          <Icon name="share" size={20} /> Compartilhar arquivo
+        </button>
+        <p className="t-footnote hint">Depois de adicionar, envie pela aba de figurinhas do WhatsApp.</p>
+      </div>
+    )
   }
 
   if (!canCopyImages()) {

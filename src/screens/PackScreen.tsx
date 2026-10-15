@@ -9,6 +9,7 @@ import { Icon } from '../ui/Icon'
 import { NavBar } from '../ui/NavBar'
 import { spring } from '../ui/motion'
 import { Sheet } from '../ui/Sheet'
+import { AddToWhatsAppButton } from './AddToWhatsApp'
 import { ChooseMediaSheet, PackFormSheet, StickerSheet } from './sheets'
 
 export function PackScreen({
@@ -107,6 +108,10 @@ export function PackScreen({
               </span>
             </div>
           </div>
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          <AddToWhatsAppButton packId={pack.id} />
         </div>
 
         <div className="actions-row">

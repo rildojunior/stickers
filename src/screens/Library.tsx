@@ -1,5 +1,6 @@
 import { motion } from 'motion/react'
 import { useRef, useState } from 'react'
+import { ANDROID_APK_URL, isNativeApp } from '../lib/native'
 import { isIOS } from '../lib/share'
 import { importPack } from '../lib/wastickers'
 import { LIMITS, type StickerKind } from '../lib/types'
@@ -17,7 +18,12 @@ export function Library({ onOpenPack, onCreate }: { onOpenPack: (id: string) => 
   const { toast, setBusy } = useFeedback()
   const [scrolled, setScrolled] = useState(false)
   const [newPack, setNewPack] = useState(false)
-  const [installHint, setInstallHint] = useState(() => isIOS() && !isStandalone && localStorage.getItem('figurinhas.installHint') !== 'off')
+  const [installHint, setInstallHint] = useState(
+    () => isIOS() && !isStandalone && !isNativeApp() && localStorage.getItem('figurinhas.installHint') !== 'off',
+  )
+  const [androidHint, setAndroidHint] = useState(
+    () => /Android/i.test(navigator.userAgent) && !isNativeApp() && localStorage.getItem('figurinhas.androidHint') !== 'off',
+  )
   const importInput = useRef<HTMLInputElement>(null)
 
   const onImport = async (file: File | undefined) => {
@@ -89,6 +95,36 @@ export function Library({ onOpenPack, onCreate }: { onOpenPack: (id: string) => 
               onClick={() => {
                 localStorage.setItem('figurinhas.installHint', 'off')
                 setInstallHint(false)
+              }}
+            >
+              <Icon name="close" size={16} />
+            </button>
+          </div>
+        )}
+
+        {androidHint && (
+          <div className="banner">
+            <span className="row-icon" style={{ background: 'var(--tint)', color: 'var(--on-tint)' }}>
+              <Icon name="download" size={17} />
+            </span>
+            <div style={{ flex: 1 }}>
+              <div className="t-headline" style={{ fontSize: '0.9375rem' }}>
+                Baixe o app para Android
+              </div>
+              <div className="t-footnote" style={{ marginTop: '0.125rem' }}>
+                Com o app instalado, você adiciona o pacote inteiro ao WhatsApp com um toque, sem o contorno automático.
+              </div>
+              <a className="btn-bar" style={{ paddingLeft: 0, textDecoration: 'none' }} href={ANDROID_APK_URL} download>
+                Baixar APK
+              </a>
+            </div>
+            <button
+              className="icon-btn"
+              style={{ width: '2rem', height: '2rem', color: 'var(--label-2)' }}
+              aria-label="Fechar aviso"
+              onClick={() => {
+                localStorage.setItem('figurinhas.androidHint', 'off')
+                setAndroidHint(false)
               }}
             >
               <Icon name="close" size={16} />
