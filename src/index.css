@@ -660,15 +660,48 @@ button.row:active {
 .editor-stage {
   flex: 1;
   min-height: 0;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
   padding: 0.5rem 1rem;
+}
+.frame-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.frame-actions .chip:disabled {
+  opacity: 0.4;
+}
+/* Guias de encaixe: aparecem só enquanto o objeto está grudado no centro */
+.snap-guide {
+  position: absolute;
+  background: #ffd60a;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 90ms ease-out;
+}
+.snap-guide[data-on='true'] {
+  opacity: 0.9;
+}
+.snap-guide[data-axis='vertical'] {
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 0.5px);
+  width: 1px;
+}
+.snap-guide[data-axis='horizontal'] {
+  left: 0;
+  right: 0;
+  top: calc(50% - 0.5px);
+  height: 1px;
 }
 .canvas-wrap {
   position: relative;
-  width: min(100%, 100vw - 2rem, 30rem);
+  flex: none;
+  width: min(100%, 100vw - 2rem, 30rem, 100dvh - 22rem);
   aspect-ratio: 1;
-  max-height: 100%;
   border-radius: 1.25rem;
   overflow: hidden;
   touch-action: none;

@@ -27,6 +27,30 @@ import { Sheet } from '../ui/Sheet'
 const S = LIMITS.size
 const COLORS = ['#ffffff', '#000000', '#ff3b30', '#ff9500', '#ffcc00', '#34c759', '#00c7be', '#007aff', '#5856d6', '#af52de', '#ff2d55']
 const MAX_IMAGE_SIDE = 1536
+// Encaixe: distância (em px da figurinha) e ângulo em que o objeto "gruda" no centro / em 0°, 90°…
+const SNAP_DISTANCE = 12
+const SNAP_ANGLE = (4 * Math.PI) / 180
+
+interface Guides {
+  vertical: boolean
+  horizontal: boolean
+}
+
+/** Aplica o encaixe sobre a posição "crua" do gesto, para o objeto poder sair do encaixe naturalmente. */
+function snapTransform(raw: Transform, offset: { x: number; y: number }): { t: Transform; guides: Guides } {
+  let rotation = raw.rotation
+  const quarter = Math.round(rotation / (Math.PI / 2)) * (Math.PI / 2)
+  if (Math.abs(rotation - quarter) < SNAP_ANGLE) rotation = quarter
+  // Centro visual do conteúdo (ex.: o recorte), que pode não coincidir com o centro da imagem.
+  const ox = (offset.x * Math.cos(rotation) - offset.y * Math.sin(rotation)) * raw.scale
+  const oy = (offset.x * Math.sin(rotation) + offset.y * Math.cos(rotation)) * raw.scale
+  const vertical = Math.abs(raw.x + ox - S / 2) < SNAP_DISTANCE
+  const horizontal = Math.abs(raw.y + oy - S / 2) < SNAP_DISTANCE
+  return {
+    t: { x: vertical ? S / 2 - ox : raw.x, y: horizontal ? S / 2 - oy : raw.y, scale: raw.scale, rotation },
+    guides: { vertical, horizontal },
+  }
+}
 
 type Tool = 'move' | 'cutout' | 'text' | 'draw' | 'outline' | 'trim'
 type Selection = 'source' | string
@@ -165,7 +189,16 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
 
   // ---------- Gestos (1:1, pinça e rotação) ----------
   const pointers = useRef(new Map<number, { x: number; y: number }>())
-  const gesture = useRef<{ moved: number; startSelected: Selection; downOnSelected: boolean } | null>(null)
+  const gesture = useRef<{ moved: number; startSelected: Selection; downOnSelected: boolean; raw: Transform | null } | null>(null)
+  const [guides, setGuides] = useState<Guides>({ vertical: false, horizontal: false })
+
+  // Deslocamento do centro do conteúdo visível em relação ao centro da imagem (no recorte, é o objeto).
+  const cutoutOffset = useMemo(() => {
+    if (!cutout) return { x: 0, y: 0 }
+    const box = alphaBounds(cutout, cutout.width, cutout.height)
+    return box ? { x: box.x + box.w / 2 - cutout.width / 2, y: box.y + box.h / 2 - cutout.height / 2 } : { x: 0, y: 0 }
+  }, [cutout])
+  const contentOffset = (sel: Selection) => (sel === 'source' && useCutout ? cutoutOffset : { x: 0, y: 0 })
 
   const toSticker = (e: { clientX: number; clientY: number }) => {
     const rect = wrapRef.current!.getBoundingClientRect()
@@ -189,12 +222,13 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
       checkpoint()
       if (tool === 'draw') {
         update((d) => ({ ...d, strokes: [...d.strokes, { color: brush.color, width: brush.width, points: [[p.x, p.y]] }] }))
-        gesture.current = { moved: 0, startSelected: selected, downOnSelected: false }
+        gesture.current = { moved: 0, startSelected: selected, downOnSelected: false, raw: null }
         return
       }
       const hit = [...docRef.current.texts].reverse().find((t) => hitText(t, p.x, p.y))
       const sel = hit ? hit.id : 'source'
-      gesture.current = { moved: 0, startSelected: sel, downOnSelected: sel === selected && sel !== 'source' }
+      const target = getTarget(docRef.current, sel)
+      gesture.current = { moved: 0, startSelected: sel, downOnSelected: sel === selected && sel !== 'source', raw: target ? { ...target } : null }
       setSelected(sel)
       if (hit && tool !== 'text') setTool('text')
       if (!hit && tool === 'text') setTool('move')
@@ -222,13 +256,14 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
     }
     if (tool === 'draw') return
 
-    const sel = gesture.current.startSelected
-    update((d) => {
-      const t = getTarget(d, sel)
-      if (!t) return d
-      if (after.length === 1) {
-        return setTarget(d, sel, { ...t, x: t.x + (p.x - prev.x), y: t.y + (p.y - prev.y) })
-      }
+    const g = gesture.current
+    const sel = g.startSelected
+    const t = g.raw
+    if (!t) return
+    let next: Transform
+    if (after.length === 1) {
+      next = { ...t, x: t.x + (p.x - prev.x), y: t.y + (p.y - prev.y) }
+    } else {
       const [a0, b0] = before
       const [a1, b1] = after
       const c0 = { x: (a0.x + b0.x) / 2, y: (a0.y + b0.y) / 2 }
@@ -240,13 +275,21 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
       // Mantém o ponto sob os dedos: P' = C1 + R(θ)·s·(P − C0)
       const vx = (t.x - c0.x) * s
       const vy = (t.y - c0.y) * s
-      return setTarget(d, sel, {
+      next = {
         x: c1.x + vx * Math.cos(th) - vy * Math.sin(th),
         y: c1.y + vx * Math.sin(th) + vy * Math.cos(th),
         scale: Math.min(40, Math.max(0.02, t.scale * s)),
         rotation: t.rotation + th,
-      })
-    })
+      }
+    }
+    g.raw = next
+    const snapped = snapTransform(next, contentOffset(sel))
+    if (snapped.guides.vertical !== guides.vertical || snapped.guides.horizontal !== guides.horizontal) {
+      setGuides(snapped.guides)
+      // Retorno tátil no instante do encaixe (onde houver suporte).
+      if ((snapped.guides.vertical && !guides.vertical) || (snapped.guides.horizontal && !guides.horizontal)) navigator.vibrate?.(8)
+    }
+    update((d) => setTarget(d, sel, snapped.t))
   }
 
   const onPointerUp = (e: RPointerEvent<HTMLDivElement>) => {
@@ -254,6 +297,7 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
     if (pointers.current.size > 0 || !gesture.current) return
     const g = gesture.current
     gesture.current = null
+    setGuides({ vertical: false, horizontal: false })
     if (g.moved < 6) {
       setHistory((h) => h.slice(0, -1)) // um toque não muda nada
       // Tocar de novo num texto já selecionado abre a edição.
@@ -277,6 +321,29 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
         scale: t.scale * factor,
       })
     })
+  }
+
+  // ---------- Enquadramento rápido ----------
+  /** Centraliza o item selecionado (ou a imagem), mantendo tamanho e rotação. */
+  const centerSelected = () => {
+    const sel = getTarget(docRef.current, selected) ? selected : 'source'
+    const t = getTarget(docRef.current, sel)
+    if (!t) return
+    const o = contentOffset(sel)
+    const ox = (o.x * Math.cos(t.rotation) - o.y * Math.sin(t.rotation)) * t.scale
+    const oy = (o.x * Math.sin(t.rotation) + o.y * Math.cos(t.rotation)) * t.scale
+    checkpoint()
+    update((d) => setTarget(d, sel, { ...t, x: S / 2 - ox, y: S / 2 - oy }))
+  }
+
+  /** Volta a imagem ao enquadramento automático. */
+  const refit = () => {
+    checkpoint()
+    if (useCutout && cutout) {
+      const box = alphaBounds(cutout, cutout.width, cutout.height)
+      if (box) return update((d) => ({ ...d, transform: fitBox(box, cutout.width, cutout.height) }))
+    }
+    update((d) => ({ ...d, transform: fitTransform(srcW, srcH, kind === 'static' ? 'contain' : 'cover') }))
   }
 
   // ---------- Ferramentas ----------
@@ -476,6 +543,8 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
         >
           <canvas ref={canvasRef} width={S} height={S} aria-label="Prévia da figurinha" />
           <div className="canvas-guide" />
+          <div className="snap-guide" data-axis="vertical" data-on={guides.vertical} />
+          <div className="snap-guide" data-axis="horizontal" data-on={guides.horizontal} />
           {selectionBox && <div className="selection-box" style={selectionBox} />}
           {!source && !loadError && (
             <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
@@ -487,6 +556,14 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
               <div className="t-headline">{loadError}</div>
             </div>
           )}
+        </div>
+        <div className="frame-actions">
+          <button className="chip press" onClick={centerSelected} disabled={!source}>
+            Centralizar{selectedText && tool === 'text' ? ' texto' : ''}
+          </button>
+          <button className="chip press" onClick={refit} disabled={!source}>
+            Enquadrar
+          </button>
         </div>
       </div>
 
@@ -501,16 +578,7 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
           >
             {tool === 'move' && (
               <div className="panel-row" style={{ justifyContent: 'center', minHeight: '4rem' }}>
-                <span className="t-footnote">Arraste, pince e gire para enquadrar</span>
-                <button
-                  className="chip press"
-                  onClick={() => {
-                    checkpoint()
-                    update((d) => ({ ...d, transform: fitTransform(srcW, srcH, kind === 'static' ? 'contain' : 'cover') }))
-                  }}
-                >
-                  Centralizar
-                </button>
+                <span className="t-footnote">Arraste, pince e gire — as guias amarelas mostram o centro</span>
               </div>
             )}
 
@@ -556,6 +624,11 @@ export function Editor({ file, kind, onCancel, onSave }: EditorProps) {
                     ))}
                   </div>
                 </div>
+                {!doc.outline.enabled && (
+                  <p className="t-footnote" style={{ margin: '0.625rem 0 0', textAlign: 'center' }}>
+                    Sem contorno, o WhatsApp do iPhone coloca um contorno branco automático ao colar.
+                  </p>
+                )}
                 {doc.outline.enabled && (
                   <>
                     <div className="swatches" style={{ marginTop: '0.5rem' }}>
